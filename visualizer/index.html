@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>NLSR 实时拓扑</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style type="text/css">
+        body {
+            font-family: sans-serif;
+            background-color: #222;
+            color: #eee;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            text-align: center;
+            font-weight: 300;
+        }
+        #topology-map {
+            width: 98vw;
+            height: 85vh;
+            border: 1px solid #555;
+            background-color: #3c3c3c;
+            margin: auto;
+        }
+        #status {
+            text-align: center;
+            padding: 5px;
+            font-size: 0.9em;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>NLSR 实时网络拓扑</h1>
+    <div id="topology-map"></div>
+    <div id="status">正在连接到NLSR服务器...</div>
+
+    <script type="text/javascript">
+        // ---------------------------------------------------
+        // JavaScript 渲染逻辑 (v5 - 长轮询版)
+        // ---------------------------------------------------
+        
+        const container = document.getElementById('topology-map');
+        const statusElement = document.getElementById('status');
+        let network = null;
+
+        // (已修改) vis.js 的数据集现在在函数内部管理
+        
+        // 1. 定义 vis.js 的绘图选项
+        const options = {
+            nodes: {
+                shape: 'ellipse',
+                font: { size: 16, color: '#ffffff' },
+                color: { border: '#a0cbe2', background: '#343434', highlight: { border: '#ffffff', background: '#505050' } },
+                scaling: { label: { enabled: true, min: 14, max: 20 } }
+            },
+            edges: {
+                width: 2,
+                font: { color: '#ffffff', strokeWidth: 0 },
+                color: { color: '#888888', highlight: '#a0cbe2' }
+            },
+            physics: {
+                barnesHut: { gravitationalConstant: -3000, springConstant: 0.04, springLength: 150 },
+                stabilization: { iterations: 150 }
+            },
+            interaction: {
+                dragNodes: true,
+                dragView: true,
+                zoomView: true
+            }
+        };
+
+        // 2. (已修改) 绘制/重绘函数
+        //    (标准2：简洁高效)
+        //    这就是您建议的“清空旧图，再绘制新图” 方案。
+        function drawTopology(data) {
+            
+            // --- 数据转换：从 JSON 格式转换为 vis.js 格式 ---
+            const newNodes = new vis.DataSet(data.nodes.map(node => ({
+                id: node.id,
+                label: node.name.split('/').pop() || node.name // 只显示路由器名 (e.g., v1)
+            })));
+            
+            const newEdges = new vis.DataSet(data.links.map(link => ({
+                from: link.source,
+                to: link.target,
+                label: String(link.cost), // 必须是字符串
+                id: `${link.source}-${link.target}` // (修复Bug) 确保边有唯一的ID
+            })));
+            // --- 转换结束 ---
+
+            // (已修改 - 修复Bug)
+            // 销毁旧的网络实例（如果存在）
+            if (network !== null) {
+                network.destroy();
+            }
+            
+            // (已修改) 创建一个全新的网络实例
+            // 这就是“清空重绘”的实现，彻底避免了重复链路
+            network = new vis.Network(container, { nodes: newNodes, edges: newEdges }, options);
+            
+            network.fit(); // 自动缩放
+            
+            statusElement.textContent = `拓扑已更新: ${new Date().toLocaleTimeString()}`;
+        }
+
+
+        // 3. (已修改) 定义“长轮询”数据获取函数
+        async function startLongPolling() {
+            console.log("发起长轮询请求...");
+            
+            try {
+                // (关键) 从 Flask 服务器的 /api/topology 路由获取数据
+                // 这个请求会“挂起”，直到超时或服务器检测到文件变化
+                const response = await fetch('/api/topology', {
+                    signal: AbortSignal.timeout(35000) // 35秒客户端超时
+                });
+                
+                // (情况A: 拓扑已更新)
+                if (response.status === 200) {
+                    statusElement.textContent = `正在处理新拓扑...`;
+                    const data = await response.json();
+                    
+                    // (关键) 只有收到新数据时才重绘
+                    drawTopology(data);
+                }
+                // (情况B: 拓扑未变化)
+                else if (response.status === 304) {
+                    statusElement.textContent = `拓扑无变化，等待下次更新... (${new Date().toLocaleTimeString()})`;
+                    console.log("拓扑未变化 (304 Not Modified)");
+                }
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log("请求超时，正在重新连接...");
+                } else {
+                    console.error("更新拓扑时出错:", error);
+                    statusElement.textContent = `连接服务器失败: ${error.message} (脚本将重试)`;
+                    // 发生错误时，等待3秒再重试
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
+            
+            // (关键) 无论成功、超时还是失败，都立即发起下一次长轮询
+    
+            startLongPolling();
+        }
+
+        // 4. 启动长轮询
+        startLongPolling();
+
+    </script>
+</body>
+</html>
