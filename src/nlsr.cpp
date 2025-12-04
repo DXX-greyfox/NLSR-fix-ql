@@ -114,26 +114,19 @@ Nlsr::Nlsr(ndn::Face& face, ndn::KeyChain& keyChain, ConfParameter& confParam)
   m_helloProtocol.onInterestSent.connect(
          [this](const ndn::Name& neighbor) { onHelloInterestSent(neighbor); });
 
-  // ✅ 教学要点：立即设置LinkCostManager到RoutingTable的重要性
+  // 立即设置LinkCostManager到RoutingTable的重要性
   // 这个设置必须在LinkCostManager启动之前完成，确保路由表可以使用智能成本计算
-  // 无论是负载感知算法还是ML算法，都需要这个基础设施
-  if ((m_confParam.getLoadAwareRouting() || m_confParam.getMLAdaptiveRouting()) && m_linkCostManager) {
-    NLSR_LOG_INFO("🔧 Setting LinkCostManager to RoutingTable for intelligent routing");
+  if ((m_confParam.getLoadAwareRouting() || m_confParam.getQLearningRouting()) && m_linkCostManager) {
+    NLSR_LOG_INFO("Setting LinkCostManager to RoutingTable for intelligent routing");
     m_routingTable.setLinkCostManager(m_linkCostManager.get());
-    NLSR_LOG_INFO("✅ LinkCostManager integration completed");
+    NLSR_LOG_INFO("LinkCostManager integration completed");
   }
 
-  // ✅ 教学要点：配置验证的简洁性原则
-  // 对于ML算法，我们只需要简单的配置验证，不需要复杂的初始化逻辑
-  // 实际的ML计算器会在RoutingTable中按需创建，遵循懒加载原则
-  if (m_confParam.getMLAdaptiveRouting()) {
-    NLSR_LOG_INFO("🧠 ML-adaptive routing enabled, intelligent learning will start with routing calculations");
+  if (m_confParam.getQLearningRouting()) {
+    NLSR_LOG_INFO("QLearning routing enabled, intelligent learning will start with routing calculations");
   }
 
-  // ✅ 教学要点：延迟启动策略的重要性
-  // LinkCostManager需要在HelloProtocol稳定后才能开始工作
-  // 这确保了邻居发现和状态同步都已经完成
-  m_scheduler.schedule(ndn::time::seconds(100), [this] {
+  m_scheduler.schedule(ndn::time::seconds(80), [this] {
     m_linkCostManager->initialize();
     
     // ✅ 关键：连接成本更新信号，这是智能路由的核心机制

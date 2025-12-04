@@ -90,10 +90,8 @@ ConfParameter::writeLog()
   NLSR_LOG_INFO("Adjacency LSA build interval:  " << m_adjLsaBuildInterval);
   NLSR_LOG_INFO("Routing calculation interval:  " << m_routingCalcInterval);
 
-  // ✅ 添加这一行：
   NLSR_LOG_INFO("Load-aware routing: " << (m_loadAwareRouting ? "enabled" : "disabled"));
-  // ✅ 添加这一行：关于机器学习负载
-  NLSR_LOG_INFO("ML-adaptive routing: " << (m_mlAdaptiveRouting ? "enabled" : "disabled"));
+  NLSR_LOG_INFO("QLearning routing: " << (m_qLearningRouting ? "enabled" : "disabled"));
 }
 
 void

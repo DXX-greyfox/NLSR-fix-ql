@@ -495,15 +495,7 @@ public:
   void setLoadAwareRouting(bool enable) { 
     m_loadAwareRouting = enable; 
   }
-  // Getter for MLAdaptiveRouting 新增部分
-  bool getMLAdaptiveRouting() const { 
-    return m_mlAdaptiveRouting; 
-  }
 
-  // Setter for MLAdaptiveRouting
-  void setMLAdaptiveRouting(bool enable) {
-    m_mlAdaptiveRouting = enable;
-  }
 
   // ========= 新增开始：Q-Learning 开关 =========
   bool getQLearningRouting() const { 
@@ -560,8 +552,6 @@ private:
 
   //新增感知负载配置部分
   bool m_loadAwareRouting = false;  // 默认关闭
-  //新增机器学习部分
-  bool m_mlAdaptiveRouting = false;  // 默认关闭
   
   // ========= 新增开始：Q-Learning 开关 =========
   bool m_qLearningRouting = false;  // 默认关闭

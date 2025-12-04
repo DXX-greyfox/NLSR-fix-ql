@@ -64,12 +64,6 @@
     std::optional<double> multiDimensionalCostPreview;
   };
 
-   // ML反馈回调类型定义
-   using MLFeedbackCallback = std::function<void(const ndn::Name&, double)>;
-   // 设置ML反馈回调方法
-   void setMLFeedbackCallback(MLFeedbackCallback callback);
-   void clearMLFeedbackCallback();
-   bool isMLFeedbackEnabled() const { return static_cast<bool>(m_mlFeedbackCallback);}
 
    /**
     * @brief Simple RTT measurement for single neighbor
@@ -340,62 +334,8 @@
   // ===== 新增：外部指标存储 =====
   std::unordered_map<ndn::Name, ExternalMetrics> m_externalMetrics;
   MultiDimensionalCostConfig m_multiDimConfig;
- private:
-    // ===== ML性能计算核心方法 =====
-  /**
-   * @brief 计算实时链路性能分数，用于ML反馈
-   * @param neighbor 邻居节点名称
-   * @param currentRtt 当前测量的RTT值
-   * @return 性能分数 (0.0=最佳, 1.0=最差)
-   */
-  double calculateRealTimePerformance(const ndn::Name& neighbor, 
-                                     ndn::time::steady_clock::duration currentRtt);
+ 
   
-  /**
-   * @brief 基于RTT计算性能分数
-   * @param rttMs RTT毫秒值
-   * @return RTT性能分数 (0.0=优秀, 1.0=很差)
-   */
-  double calculateRttPerformanceScore(double rttMs);
-  
-  /**
-   * @brief 基于RTT历史计算稳定性性能分数
-   * @param neighbor 邻居节点名称
-   * @return 稳定性性能分数 (0.0=很稳定, 1.0=很不稳定)
-   */
-  double calculateStabilityPerformanceScore(const ndn::Name& neighbor);
-  
-  /**
-   * @brief 基于超时情况计算可靠性性能分数
-   * @param linkState 链路状态引用
-   * @return 可靠性性能分数 (0.0=很可靠, 1.0=很不可靠)//后期再修改完善
-   */
-  double calculateReliabilityPerformanceScore(const OutgoingLinkState& linkState);
-  
-  /**
-   * @brief 基于RTT变化趋势计算趋势性能分数
-   * @param neighbor 邻居节点名称
-   * @return 趋势性能分数 (0.0=改善中, 1.0=恶化中)
-   */
-  double calculateTrendPerformanceScore(const ndn::Name& neighbor);
-
- private:
-  MLFeedbackCallback m_mlFeedbackCallback;
-  
-  // ===== 性能计算配置参数 =====
-  static constexpr size_t MIN_SAMPLES_FOR_ML_FEEDBACK = 3;
-  
-  // RTT性能评估阈值 (毫秒)
-  static constexpr double RTT_EXCELLENT_THRESHOLD = 10.0;
-  static constexpr double RTT_GOOD_THRESHOLD = 50.0;
-  static constexpr double RTT_FAIR_THRESHOLD = 100.0;
-  static constexpr double RTT_POOR_THRESHOLD = 200.0;
-  
-  // 性能分数权重
-  static constexpr double RTT_WEIGHT = 0.4;
-  static constexpr double STABILITY_WEIGHT = 0.3;
-  static constexpr double RELIABILITY_WEIGHT = 0.2;
-  static constexpr double TREND_WEIGHT = 0.1;
 
  };
  

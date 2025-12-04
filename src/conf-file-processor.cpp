@@ -405,27 +405,6 @@ ConfFileProcessor::processConfSectionGeneral(const ConfigSection& section)
     m_confParam.setLoadAwareRouting(false);
   }
 
-  // ml-adaptive-routing 配置解析
-  try {
-    std::string mlAdaptiveStr = section.get<std::string>("ml-adaptive-routing", "off");
-    
-    if (boost::iequals(mlAdaptiveStr, "off") || boost::iequals(mlAdaptiveStr, "false")) {
-      m_confParam.setMLAdaptiveRouting(false);
-    }
-    else if (boost::iequals(mlAdaptiveStr, "on") || boost::iequals(mlAdaptiveStr, "true")) {
-      m_confParam.setMLAdaptiveRouting(true);
-    }
-    else {
-      std::cerr << "Invalid value for ml-adaptive-routing: " << mlAdaptiveStr << std::endl;
-      std::cerr << "Valid values are: on, off, true, false" << std::endl;
-      return false;
-    }
-  }
-  catch (const std::exception& ex) {
-    // 如果没有配置则使用默认值(false)
-    m_confParam.setMLAdaptiveRouting(false);
-  }
-
   // q-learning-routing 配置解析 
   try {
     std::string qLearningStr = section.get<std::string>("q-learning-routing", "off");
