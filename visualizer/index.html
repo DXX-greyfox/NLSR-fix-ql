@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>NLSR 实时拓扑（分层显示：直线Cost + 曲线Metrics）</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style type="text/css">
+        body { font-family: 'Segoe UI', sans-serif; background-color: #222; color: #eee; margin: 0; }
+        h1 { text-align: center; font-weight: 300; margin-top: 20px; }
+        #topology-map { width: 98vw; height: 85vh; border: 1px solid #444; background-color: #2b2b2b; margin: auto; }
+        #status { text-align: center; padding: 10px; color: #aaa; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <h1>NLSR 实时网络拓扑</h1>
+    <div id="topology-map"></div>
+    <div id="status">正在初始化...</div>
+
+    <script type="text/javascript">
+        const container = document.getElementById('topology-map');
+        const statusElement = document.getElementById('status');
+        let network = null;
+
+        // 1. Vis.js 配置
+        const options = {
+            nodes: {
+                shape: 'dot',
+                size: 25,
+                font: { size: 18, color: '#ffffff', face: 'arial' },
+                borderWidth: 2,
+                color: { border: '#4f81bd', background: '#000000' }
+            },
+            edges: {
+                width: 2,
+                font: { color: '#cccccc', size: 12, strokeWidth: 0, align: 'top' },
+                // 默认策略：所有线都是直线 (smooth: false)
+                // 我们会在添加 Metrics 箭头时单独开启 smooth
+                smooth: false 
+            },
+            physics: { enabled: false }, // 固定布局，关闭物理引擎
+            interaction: { hover: true }
+        };
+
+        // 2. 强力清洗器 (提取短名字)
+        function getShortID(rawName) {
+            if (!rawName) return "";
+            if (typeof rawName !== 'string') return String(rawName);
+            // 移除 %C1.Router，并取最后一段
+            return rawName.replace('/%C1.Router', '').split('/').pop().toLowerCase();
+        }
+
+        // 3. 核心绘图函数
+        function drawTopology(data) {
+            
+            // --- 0. [双重保险] 数据保鲜检查 ---
+            // 作用：解决 u1 程序由于 Ctrl+C 停止后，网页依然显示"遗像"的问题
+            if (data.directed_links && data.generated_at_ms) {
+                const now = Date.now();
+                const diff = now - data.generated_at_ms;
+                // 如果数据滞后超过18秒，视为过期，清空箭头
+                if (diff > 18000) { 
+                    // 仅清空动态箭头，保留静态物理链路
+                    data.directed_links = []; 
+                    // 可选：在状态栏提示
+                    statusElement.innerText += " (Metrics数据源已离线)";
+                }
+            }
+
+            // --- A. 建立映射与预处理 ---
+            const idMap = {}; 
+            data.nodes.forEach(node => {
+                idMap[node.id] = getShortID(node.name);
+            });
+
+            const physicalLinks = new Set();
+
+            // --- B. 处理节点 (Nodes) ---
+            const visNodes = data.nodes.map(node => {
+                const id = getShortID(node.name);
+                
+                // [修正] 固定坐标布局 - 确保 Link Cost 在正确位置的关键
+                const layout = {
+                    'v1': { x: -700, y: 0 },
+                    'v2': { x: -300, y: -300 },
+                    'v3': { x: -300, y: 300 },
+                    'u1': { x: 300, y: 300 },
+                    'u2': { x: 300, y: -300 },
+                    'u3': { x: 700, y: 0 }
+                };
+
+                let x = 0, y = 0;
+                if (layout[id]) {
+                    x = layout[id].x;
+                    y = layout[id].y;
+                } else {
+                    x = 500 * Math.cos(Math.random() * Math.PI * 2);
+                    y = 500 * Math.sin(Math.random() * Math.PI * 2);
+                }
+
+                return { id: id, label: id, title: node.name, x: x, y: y };
+            });
+
+            const visEdges = [];
+
+            // --- C. 处理物理链路 (Topology Links) ---
+            data.links.forEach(link => {
+                const from = (typeof link.source === 'number') ? idMap[link.source] : getShortID(link.source);
+                const to   = (typeof link.target === 'number') ? idMap[link.target] : getShortID(link.target);
+
+                if (from && to) {
+                    physicalLinks.add(`${from}-${to}`);
+                    physicalLinks.add(`${to}-${from}`);
+
+                    visEdges.push({
+                        id: `topo-${from}-${to}`,
+                        from: from,
+                        to: to,
+                        label: String(link.cost), 
+                        // [修正] 强制标签居中 (middle)，修复标签漂移问题
+                        font: { 
+                            align: 'middle',   
+                            size: 18,          // 字号加大
+                            color: '#cccccc',
+                            strokeWidth: 3,    // 描边加粗，防止与线混淆
+                            strokeColor: '#2b2b2b'
+                        },
+                        color: { color: '#666666', opacity: 0.5 },
+                        width: 4,              // 线条加粗
+                        smooth: false,         // 必须是直线
+                        arrows: { to: { enabled: false } } 
+                    });
+                }
+            });
+
+            // --- D. 处理度量数据 (Metrics) ---
+            if (data.directed_links) {
+                data.directed_links.forEach(link => {
+                    const src = getShortID(link.src);
+                    const dst = getShortID(link.dst);
+
+                    if (physicalLinks.has(`${src}-${dst}`)) {
+                        const labelText = 
+                            `RTT: ${Math.round(link.rtt_ms)}ms\n` +
+                            `Loss: ${(link.loss * 100).toFixed(1)}%\n` +
+                            `Rate: ${link.rate_mbps.toFixed(2)} Mbps`;
+
+                        visEdges.push({
+                            id: `metric-${src}-${dst}`,
+                            from: src,
+                            to: dst,
+                            label: labelText,
+                            font: { 
+                                size: 12, 
+                                color: '#00ff00', 
+                                background: 'rgba(0,0,0,0.8)', 
+                                align: 'horizontal' 
+                            },
+                            color: { color: '#00ff00', opacity: 0.9 },
+                            width: 2,
+                            dashes: true, 
+                            arrows: 'to',
+                            // 曲线让开中间位置
+                            smooth: {
+                                enabled: true,
+                                type: 'curvedCW', 
+                                roundness: 0.15 
+                            }
+                        });
+                    }
+                });
+            }
+
+            // --- E. 渲染 ---
+            const nodesDataSet = new vis.DataSet(visNodes);
+            const edgesDataSet = new vis.DataSet(visEdges);
+
+            if (network !== null) {
+                network.setData({ nodes: nodesDataSet, edges: edgesDataSet });
+            } else {
+                network = new vis.Network(container, { nodes: nodesDataSet, edges: edgesDataSet }, options);
+                network.fit(); 
+            }
+            
+            // 更新状态栏
+            const metricCount = data.directed_links ? data.directed_links.length : 0;
+            statusElement.innerText = `最后更新: ${new Date().toLocaleTimeString()} | 节点: ${visNodes.length} | 物理链路: ${data.links.length} | 度量流: ${metricCount}`;
+        }
+
+        // 4. 长轮询逻辑
+        async function startLongPolling() {
+            try {
+                const response = await fetch('/api/topology', { signal: AbortSignal.timeout(35000) });
+                if (response.status === 200) {
+                    const data = await response.json();
+                    drawTopology(data);
+                }
+            } catch (e) {
+                console.warn("轮询等待或出错:", e);
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            startLongPolling();
+        }
+
+        startLongPolling();zai
+    </script>
+</body>
+</html>
